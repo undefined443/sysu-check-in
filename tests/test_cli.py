@@ -64,3 +64,18 @@ def test_main_reports_no_active_activity(monkeypatch: pytest.MonkeyPatch) -> Non
         SystemExit, match="Check-in failed: No active check-in activity"
     ):
         cli.main()
+
+
+def test_main_reports_rejected_check_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Convert a rejected submission into a concise command-line error."""
+    monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1"])
+
+    def _raise_rejection(*_: str) -> str:
+        raise core.CheckInRejectedError("Location verification failed.")
+
+    monkeypatch.setattr(core, "check_in", _raise_rejection)
+
+    with pytest.raises(
+        SystemExit, match="Check-in failed: Location verification failed"
+    ):
+        cli.main()

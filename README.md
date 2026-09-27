@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/undefined443/sysu-check-in/actions/workflows/ci.yml/badge.svg)](https://github.com/undefined443/sysu-check-in/actions/workflows/ci.yml)
 
-A command-line client for submitting your face image to the SYSU face-recognition check-in service.
+A command-line client for completing SYSU check-in activities.
 
 ## Installation
 
@@ -26,7 +26,7 @@ You can also supply a different image path:
 sysu-check-in <student-id> --image <image-path>
 ```
 
-The command prints the raw service response. It exits with a non-zero status and an error message if the image is missing, the request fails, or no active check-in activity is available.
+The command prints the raw response from the last required submission. It exits with a non-zero status and an error message if the image is missing, the request fails, an activity is unavailable, or the service rejects a submission.
 
 ## Development
 

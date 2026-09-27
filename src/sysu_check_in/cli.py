@@ -40,6 +40,7 @@ def main() -> None:
         print(core.check_in(args.student_id, args.image))
     except (
         FileNotFoundError,
+        core.CheckInRejectedError,
         core.NoActiveActivityError,
         requests.RequestException,
         ValueError,

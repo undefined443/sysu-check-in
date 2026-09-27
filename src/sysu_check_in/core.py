@@ -2,6 +2,7 @@
 
 import base64
 import time
+from dataclasses import dataclass
 
 import requests
 from Crypto.Cipher import AES
@@ -11,10 +12,11 @@ from Crypto.Util.Padding import pad
 _AES_KEY = bytes.fromhex("73683132333435363738393031323334")
 
 _BASE_URL = "https://facerecog.sysu.edu.cn/sign"
+_ACTIVE_SIGN_STATUS = 2
 
 DEFAULT_IMAGE_PATH = "face.jpg"
 
-# Campus coordinates used by the optional position submission.
+# Campus coordinates used for position submission.
 _CAMPUS_LONGITUDE = "113.9539"
 _CAMPUS_LATITUDE = "22.801604"
 
@@ -36,9 +38,27 @@ class NoActiveActivityError(Exception):
     """Raised when the service has no active check-in activity."""
 
 
+class CheckInRejectedError(Exception):
+    """Raised when the service rejects a check-in submission."""
+
+
+@dataclass(frozen=True)
+class _Activity:
+    """Details needed to submit an active check-in activity."""
+
+    activity_id: str
+    collects_gps: bool
+    requires_face: bool
+
+
 def _timestamp() -> int:
     """Return the current Unix timestamp in seconds."""
     return int(time.time())
+
+
+def _timestamp_milliseconds() -> int:
+    """Return the current Unix timestamp in milliseconds."""
+    return int(time.time() * 1000)
 
 
 def _encrypt(plaintext: str) -> str:
@@ -87,26 +107,45 @@ def _post(endpoint_path: str, form_data: dict[str, str]) -> requests.Response:
     return response
 
 
-def _get_activity_id(student_id: str) -> str:
-    """Fetch the ID of the currently active check-in activity.
+def _raise_for_rejection(response: requests.Response) -> None:
+    """Raise an error when the service reports a rejected submission.
+
+    Args:
+        response: HTTP response returned by the check-in service.
+
+    Raises:
+        CheckInRejectedError: If the service response has a non-success code.
+    """
+    payload = response.json()
+    if payload["code"] != 1:
+        raise CheckInRejectedError(payload["msg"])
+
+
+def _get_active_activity(student_id: str) -> _Activity:
+    """Fetch details for the currently active check-in activity.
 
     Args:
         student_id: Student ID used for check-in.
 
     Returns:
-        The active check-in activity ID.
+        Details of the active check-in activity.
     """
     response = _post(
         "getActivityList", {"sKey": _encrypt(f"{student_id}##{_timestamp()}")}
     )
     activities = response.json()["data"]["rows"]
-    if not activities:
-        raise NoActiveActivityError("No active check-in activity is available.")
-    return activities[0]["sActId"]
+    for activity in activities:
+        if activity["iSignStatus"] == _ACTIVE_SIGN_STATUS:
+            return _Activity(
+                activity_id=activity["sActId"],
+                collects_gps=activity["iCollectGPS"] == 1,
+                requires_face=activity["isNeedFace"] == 1,
+            )
+    raise NoActiveActivityError("No active check-in activity is available.")
 
 
 def _submit_gps(student_id: str, activity_id: str) -> str:
-    """Submit the optional campus position for an activity.
+    """Submit the campus position for an activity.
 
     Args:
         student_id: Student ID used for check-in.
@@ -117,9 +156,11 @@ def _submit_gps(student_id: str, activity_id: str) -> str:
     """
     plaintext = (
         f"{student_id}##{activity_id}####{_CAMPUS_LONGITUDE}##"
-        f"{_CAMPUS_LATITUDE}##{_timestamp()}"
+        f"{_CAMPUS_LATITUDE}##{_timestamp_milliseconds()}"
     )
-    return _post("submitPosition", {"sKey": _encrypt(plaintext)}).text
+    response = _post("submitPosition", {"sKey": _encrypt(plaintext)})
+    _raise_for_rejection(response)
+    return response.text
 
 
 def _submit_face(student_id: str, activity_id: str, image_path: str) -> str:
@@ -138,11 +179,13 @@ def _submit_face(student_id: str, activity_id: str, image_path: str) -> str:
         "sKey": _encrypt(f"{student_id}##{activity_id}##{_timestamp()}"),
         "sImage": f"data:image/jpeg;base64,{face_image_base64}",
     }
-    return _post("submitSignFace", form_data).text
+    response = _post("submitSignFace", form_data)
+    _raise_for_rejection(response)
+    return response.text
 
 
 def check_in(student_id: str, image_path: str = DEFAULT_IMAGE_PATH) -> str:
-    """Perform face check-in for a student ID.
+    """Perform all required check-in submissions for a student ID.
 
     Args:
         student_id: Student ID used for check-in.
@@ -151,7 +194,10 @@ def check_in(student_id: str, image_path: str = DEFAULT_IMAGE_PATH) -> str:
     Returns:
         The raw response returned by the check-in service.
     """
-    activity_id = _get_activity_id(student_id)
-    # Optional: enable this for a full position-and-face check-in flow.
-    # _submit_gps(student_id, activity_id)
-    return _submit_face(student_id, activity_id, image_path)
+    activity = _get_active_activity(student_id)
+    response = ""
+    if activity.collects_gps:
+        response = _submit_gps(student_id, activity.activity_id)
+    if activity.requires_face:
+        response = _submit_face(student_id, activity.activity_id, image_path)
+    return response
