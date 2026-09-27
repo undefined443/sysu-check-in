@@ -1,7 +1,7 @@
 [project]
 name = "sysu-check-in"
 version = "0.1.0"
-description = "Command-line client for SYSU face-recognition check-in"
+description = "Command-line client for SYSU check-in activities"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
