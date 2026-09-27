@@ -9,5 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# IDE settings
+.idea/
+!.vscode/
+
 # Keep the lockfile under version control for reproducible installations.
 !uv.lock

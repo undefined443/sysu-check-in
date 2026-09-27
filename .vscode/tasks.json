@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Test",
+      "type": "shell",
+      "command": "uv",
+      "args": ["run", "--frozen", "pytest"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Ruff check",
+      "type": "shell",
+      "command": "uv",
+      "args": ["run", "--frozen", "ruff", "check", "."],
+      "problemMatcher": []
+    },
+    {
+      "label": "Pyright",
+      "type": "shell",
+      "command": "uv",
+      "args": ["run", "--frozen", "pyright"],
+      "problemMatcher": []
+    }
+  ]
+}
