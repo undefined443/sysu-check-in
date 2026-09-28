@@ -1,12 +1,15 @@
 """Client for the SYSU face-recognition check-in service."""
 
 import base64
+import logging
 import time
 from dataclasses import dataclass
 
 import requests
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+
+logger = logging.getLogger(__name__)
 
 # AES-128 key shared by every request; the hex decodes to b"sh12345678901234".
 _AES_KEY = bytes.fromhex("73683132333435363738393031323334")
@@ -15,6 +18,9 @@ _BASE_URL = "https://facerecog.sysu.edu.cn/sign"
 _ACTIVE_SIGN_STATUS = 2
 
 DEFAULT_IMAGE_PATH = "face.jpg"
+
+# Maximum number of response-body characters written to debug logs.
+_LOGGED_BODY_LIMIT = 500
 
 # Campus coordinates used for position submission.
 _CAMPUS_LONGITUDE = "113.9539"
@@ -84,7 +90,9 @@ def _read_image_base64(image_path: str) -> str:
         The Base64-encoded image content.
     """
     with open(image_path, "rb") as file:
-        return base64.b64encode(file.read()).decode("utf-8")
+        content = file.read()
+    logger.debug("Read %d bytes from image %s", len(content), image_path)
+    return base64.b64encode(content).decode("utf-8")
 
 
 def _post(endpoint_path: str, form_data: dict[str, str]) -> requests.Response:
@@ -97,11 +105,16 @@ def _post(endpoint_path: str, form_data: dict[str, str]) -> requests.Response:
     Returns:
         The successful HTTP response.
     """
-    response = requests.post(
-        f"{_BASE_URL}/{endpoint_path}",
-        data=form_data,
-        headers=_HEADERS,
-        timeout=15,
+    url = f"{_BASE_URL}/{endpoint_path}"
+    logger.debug("POST %s with fields %s", url, sorted(form_data))
+    started = time.monotonic()
+    response = requests.post(url, data=form_data, headers=_HEADERS, timeout=15)
+    logger.debug(
+        "POST %s returned HTTP %d in %.2fs: %s",
+        url,
+        response.status_code,
+        time.monotonic() - started,
+        response.text[:_LOGGED_BODY_LIMIT],
     )
     response.raise_for_status()
     return response
@@ -118,6 +131,7 @@ def _raise_for_rejection(response: requests.Response) -> None:
     """
     payload = response.json()
     if payload["code"] != 1:
+        logger.warning("Service rejected submission: %s", payload)
         raise CheckInRejectedError(payload["msg"])
 
 
@@ -130,17 +144,28 @@ def _get_active_activity(student_id: str) -> _Activity:
     Returns:
         Details of the active check-in activity.
     """
-    response = _post(
-        "getActivityList", {"sKey": _encrypt(f"{student_id}##{_timestamp()}")}
-    )
+    logger.info("Fetching activity list for student %s", student_id)
+    plaintext = f"{student_id}##{_timestamp()}"
+    logger.debug("Activity list payload: %s", plaintext)
+    response = _post("getActivityList", {"sKey": _encrypt(plaintext)})
     activities = response.json()["data"]["rows"]
+    logger.info("Service returned %d activities", len(activities))
     for activity in activities:
+        logger.debug(
+            "Activity %s: iSignStatus=%s iCollectGPS=%s isNeedFace=%s",
+            activity.get("sActId"),
+            activity.get("iSignStatus"),
+            activity.get("iCollectGPS"),
+            activity.get("isNeedFace"),
+        )
         if activity["iSignStatus"] == _ACTIVE_SIGN_STATUS:
-            return _Activity(
+            active = _Activity(
                 activity_id=activity["sActId"],
                 collects_gps=activity["iCollectGPS"] == 1,
                 requires_face=activity["isNeedFace"] == 1,
             )
+            logger.info("Selected active activity: %s", active)
+            return active
     raise NoActiveActivityError("No active check-in activity is available.")
 
 
@@ -158,6 +183,8 @@ def _submit_gps(student_id: str, activity_id: str) -> str:
         f"{student_id}##{activity_id}####{_CAMPUS_LONGITUDE}##"
         f"{_CAMPUS_LATITUDE}##{_timestamp_milliseconds()}"
     )
+    logger.info("Submitting position for activity %s", activity_id)
+    logger.debug("Position payload: %s", plaintext)
     response = _post("submitPosition", {"sKey": _encrypt(plaintext)})
     _raise_for_rejection(response)
     return response.text
@@ -174,9 +201,12 @@ def _submit_face(student_id: str, activity_id: str, image_path: str) -> str:
     Returns:
         The raw response returned by the check-in service.
     """
+    logger.info("Submitting face image %s for activity %s", image_path, activity_id)
     face_image_base64 = _read_image_base64(image_path)
+    plaintext = f"{student_id}##{activity_id}##{_timestamp()}"
+    logger.debug("Face payload: %s", plaintext)
     form_data = {
-        "sKey": _encrypt(f"{student_id}##{activity_id}##{_timestamp()}"),
+        "sKey": _encrypt(plaintext),
         "sImage": f"data:image/jpeg;base64,{face_image_base64}",
     }
     response = _post("submitSignFace", form_data)
@@ -198,6 +228,11 @@ def check_in(student_id: str, image_path: str = DEFAULT_IMAGE_PATH) -> str:
     response = ""
     if activity.collects_gps:
         response = _submit_gps(student_id, activity.activity_id)
+    else:
+        logger.info("Activity does not collect GPS; skipping position submission")
     if activity.requires_face:
         response = _submit_face(student_id, activity.activity_id, image_path)
+    else:
+        logger.info("Activity does not require a face; skipping face submission")
+    logger.info("Check-in completed for activity %s", activity.activity_id)
     return response

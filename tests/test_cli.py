@@ -1,5 +1,6 @@
 """Tests for the command-line interface."""
 
+import logging
 import sys
 from importlib.metadata import version
 from unittest.mock import Mock
@@ -79,3 +80,21 @@ def test_main_reports_rejected_check_in(monkeypatch: pytest.MonkeyPatch) -> None
         SystemExit, match="Check-in failed: Location verification failed"
     ):
         cli.main()
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected_level"),
+    [([], logging.WARNING), (["-v"], logging.INFO), (["-vv"], logging.DEBUG)],
+)
+def test_main_configures_log_level(
+    monkeypatch: pytest.MonkeyPatch, flags: list[str], expected_level: int
+) -> None:
+    """Map repeated verbose flags to increasingly detailed log levels."""
+    monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1", *flags])
+    monkeypatch.setattr(core, "check_in", lambda *_: "checked in")
+    basic_config = Mock()
+    monkeypatch.setattr(logging, "basicConfig", basic_config)
+
+    cli.main()
+
+    assert basic_config.call_args.kwargs["level"] == expected_level

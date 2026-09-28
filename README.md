@@ -18,6 +18,12 @@ You can also supply a different image path:
 uvx sysu-check-in <student-id> --image <image-path>
 ```
 
+Add `-v` to log progress to stderr, or `-vv` for debug details such as request payloads, HTTP status codes, response bodies and tracebacks:
+
+```bash
+uvx sysu-check-in <student-id> -vv
+```
+
 The command prints the raw response from the last required submission. It exits with a non-zero status and an error message if the image is missing, the request fails, an activity is unavailable, or the service rejects a submission.
 
 ## Development

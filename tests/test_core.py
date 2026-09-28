@@ -193,3 +193,24 @@ def test_submit_gps_raises_when_service_rejects_submission(
 
     with pytest.raises(core.CheckInRejectedError, match="Location verification failed"):
         core._submit_gps("student-1", "activity-1")
+
+
+def test_check_in_logs_skipped_submissions(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Log which submissions are skipped for the active activity."""
+    monkeypatch.setattr(
+        core,
+        "_get_active_activity",
+        lambda _: core._Activity(
+            activity_id="activity-1",
+            collects_gps=False,
+            requires_face=False,
+        ),
+    )
+
+    with caplog.at_level("INFO", logger=core.__name__):
+        core.check_in("student-1")
+
+    assert "skipping position submission" in caplog.text
+    assert "skipping face submission" in caplog.text
