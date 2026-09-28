@@ -144,7 +144,7 @@ def _get_active_activity(student_id: str) -> _Activity:
     Returns:
         Details of the active check-in activity.
     """
-    logger.info("Fetching activity list for student %s", student_id)
+    logger.info("Fetching activity list")
     plaintext = f"{student_id}##{_timestamp()}"
     logger.debug("Activity list payload: %s", plaintext)
     response = _post("getActivityList", {"sKey": _encrypt(plaintext)})

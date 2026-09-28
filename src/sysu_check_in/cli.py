@@ -5,6 +5,7 @@ import logging
 from importlib.metadata import version
 
 import requests
+from rich.console import Console
 from rich.logging import RichHandler
 
 from sysu_check_in import core
@@ -60,7 +61,13 @@ def _configure_logging(verbosity: int) -> None:
         level=level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=verbosity >= 2)],
+        handlers=[
+            RichHandler(
+                console=Console(stderr=True),
+                rich_tracebacks=True,
+                show_path=verbosity >= 2,
+            )
+        ],
     )
 
 

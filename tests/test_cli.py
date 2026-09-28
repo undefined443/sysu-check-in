@@ -106,3 +106,23 @@ def test_main_configures_log_level(
     cli.main()
 
     assert basic_config.call_args.kwargs["level"] == expected_level
+
+
+def test_main_writes_logs_to_stderr(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Keep stdout limited to the service response."""
+    monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1", "-v"])
+    monkeypatch.setattr(logging.getLogger(), "handlers", [])
+
+    def _check_in(*_: str) -> str:
+        logging.getLogger(core.__name__).info("progress")
+        return "checked in"
+
+    monkeypatch.setattr(core, "check_in", _check_in)
+
+    cli.main()
+
+    captured = capsys.readouterr()
+    assert captured.out == "checked in\n"
+    assert "progress" in captured.err
