@@ -131,7 +131,7 @@ def _raise_for_rejection(response: requests.Response) -> None:
     """
     payload = response.json()
     if payload["code"] != 1:
-        logger.warning("Service rejected submission: %s", payload)
+        logger.debug("Service rejected submission: %s", payload)
         raise CheckInRejectedError(payload["msg"])
 
 

@@ -78,5 +78,5 @@ def main() -> None:
         ValueError,
         KeyError,
     ) as error:
-        logger.debug("Check-in failed", exc_info=True)
-        raise SystemExit(f"Check-in failed: {error}") from error
+        logger.error("Check-in failed: %s", error, exc_info=args.verbose >= 2)
+        raise SystemExit(1) from error

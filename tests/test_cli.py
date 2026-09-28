@@ -52,7 +52,9 @@ def test_main_prints_version(
     assert capsys.readouterr().out == f"sysu-check-in {version('sysu-check-in')}\n"
 
 
-def test_main_reports_no_active_activity(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_reports_no_active_activity(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """Convert a missing activity into a concise command-line error."""
     monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1"])
 
@@ -61,13 +63,17 @@ def test_main_reports_no_active_activity(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(core, "check_in", _raise_no_activity)
 
-    with pytest.raises(
-        SystemExit, match="Check-in failed: No active check-in activity"
-    ):
+    with pytest.raises(SystemExit) as exit_info:
         cli.main()
 
+    assert exit_info.value.code == 1
+    assert caplog.record_tuples[-1][1] == logging.ERROR
+    assert "Check-in failed: No active check-in activity" in caplog.text
 
-def test_main_reports_rejected_check_in(monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_main_reports_rejected_check_in(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """Convert a rejected submission into a concise command-line error."""
     monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1"])
 
@@ -76,10 +82,12 @@ def test_main_reports_rejected_check_in(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(core, "check_in", _raise_rejection)
 
-    with pytest.raises(
-        SystemExit, match="Check-in failed: Location verification failed"
-    ):
+    with pytest.raises(SystemExit) as exit_info:
         cli.main()
+
+    assert exit_info.value.code == 1
+    assert caplog.record_tuples[-1][1] == logging.ERROR
+    assert "Check-in failed: Location verification failed" in caplog.text
 
 
 @pytest.mark.parametrize(
