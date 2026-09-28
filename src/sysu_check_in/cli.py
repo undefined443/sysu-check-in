@@ -11,6 +11,7 @@ from rich.logging import RichHandler
 from sysu_check_in import core
 
 logger = logging.getLogger(__name__)
+_PACKAGE_LOGGER_NAME = "sysu_check_in"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -46,7 +47,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _configure_logging(verbosity: int) -> None:
-    """Configure logging to stderr based on the requested verbosity.
+    """Configure package logging to stderr based on the requested verbosity.
 
     Args:
         verbosity: Number of times the verbose flag was supplied.
@@ -57,18 +58,18 @@ def _configure_logging(verbosity: int) -> None:
         level = logging.INFO
     else:
         level = logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[
-            RichHandler(
-                console=Console(stderr=True),
-                rich_tracebacks=True,
-                show_path=verbosity >= 2,
-            )
-        ],
+    package_logger = logging.getLogger(_PACKAGE_LOGGER_NAME)
+    package_logger.setLevel(level)
+    package_logger.propagate = False
+
+    handler = RichHandler(
+        console=Console(stderr=True),
+        rich_tracebacks=True,
+        show_path=verbosity >= 2,
     )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    package_logger.handlers.clear()
+    package_logger.addHandler(handler)
 
 
 def main() -> None:

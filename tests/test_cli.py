@@ -53,7 +53,7 @@ def test_main_prints_version(
 
 
 def test_main_reports_no_active_activity(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Convert a missing activity into a concise command-line error."""
     monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1"])
@@ -67,12 +67,11 @@ def test_main_reports_no_active_activity(
         cli.main()
 
     assert exit_info.value.code == 1
-    assert caplog.record_tuples[-1][1] == logging.ERROR
-    assert "Check-in failed: No active check-in activity" in caplog.text
+    assert "Check-in failed: No active check-in activity" in capsys.readouterr().err
 
 
 def test_main_reports_rejected_check_in(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Convert a rejected submission into a concise command-line error."""
     monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1"])
@@ -86,37 +85,27 @@ def test_main_reports_rejected_check_in(
         cli.main()
 
     assert exit_info.value.code == 1
-    assert caplog.record_tuples[-1][1] == logging.ERROR
-    assert "Check-in failed: Location verification failed" in caplog.text
+    assert "Check-in failed: Location verification failed" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
-    ("flags", "expected_level"),
-    [([], logging.WARNING), (["-v"], logging.INFO), (["-vv"], logging.DEBUG)],
+    ("flags", "shows_progress", "shows_debug_detail"),
+    [([], False, False), (["-v"], True, False), (["-vv"], True, True)],
 )
-def test_main_configures_log_level(
-    monkeypatch: pytest.MonkeyPatch, flags: list[str], expected_level: int
+def test_main_configures_package_log_level(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flags: list[str],
+    shows_progress: bool,
+    shows_debug_detail: bool,
 ) -> None:
-    """Map repeated verbose flags to increasingly detailed log levels."""
+    """Map repeated verbose flags to package logging detail."""
     monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1", *flags])
-    monkeypatch.setattr(core, "check_in", lambda *_: "checked in")
-    basic_config = Mock()
-    monkeypatch.setattr(logging, "basicConfig", basic_config)
-
-    cli.main()
-
-    assert basic_config.call_args.kwargs["level"] == expected_level
-
-
-def test_main_writes_logs_to_stderr(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Keep stdout limited to the service response."""
-    monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1", "-v"])
-    monkeypatch.setattr(logging.getLogger(), "handlers", [])
 
     def _check_in(*_: str) -> str:
-        logging.getLogger(core.__name__).info("progress")
+        core_logger = logging.getLogger(core.__name__)
+        core_logger.info("progress")
+        core_logger.debug("debug detail")
         return "checked in"
 
     monkeypatch.setattr(core, "check_in", _check_in)
@@ -125,4 +114,5 @@ def test_main_writes_logs_to_stderr(
 
     captured = capsys.readouterr()
     assert captured.out == "checked in\n"
-    assert "progress" in captured.err
+    assert ("progress" in captured.err) is shows_progress
+    assert ("debug detail" in captured.err) is shows_debug_detail
