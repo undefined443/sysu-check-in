@@ -1,6 +1,6 @@
 [project]
 name = "sysu-check-in"
-version = "0.2.0"
+version = "0.3.0"
 description = "Command-line client for SYSU check-in activities"
 readme = "README.md"
 license = "MIT"
