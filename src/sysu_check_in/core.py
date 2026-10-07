@@ -3,7 +3,6 @@
 import base64
 import logging
 import time
-from dataclasses import dataclass
 
 import requests
 from Crypto.Cipher import AES
@@ -46,15 +45,6 @@ class NoActiveActivityError(Exception):
 
 class CheckInRejectedError(Exception):
     """Raised when the service rejects a check-in submission."""
-
-
-@dataclass(frozen=True)
-class _Activity:
-    """Details needed to submit an active check-in activity."""
-
-    activity_id: str
-    collects_gps: bool
-    requires_face: bool
 
 
 def _timestamp() -> int:
@@ -135,14 +125,14 @@ def _raise_for_rejection(response: requests.Response) -> None:
         raise CheckInRejectedError(payload["msg"])
 
 
-def _get_active_activity(student_id: str) -> _Activity:
-    """Fetch details for the currently active check-in activity.
+def _get_active_activity(student_id: str) -> str:
+    """Fetch the ID of the currently active check-in activity.
 
     Args:
         student_id: Student ID used for check-in.
 
     Returns:
-        Details of the active check-in activity.
+        The active check-in activity ID.
     """
     logger.info("Fetching activity list")
     plaintext = f"{student_id}##{_timestamp()}"
@@ -159,13 +149,8 @@ def _get_active_activity(student_id: str) -> _Activity:
             activity.get("isNeedFace"),
         )
         if activity["iSignStatus"] == _ACTIVE_SIGN_STATUS:
-            active = _Activity(
-                activity_id=activity["sActId"],
-                collects_gps=activity["iCollectGPS"] == 1,
-                requires_face=activity["isNeedFace"] == 1,
-            )
-            logger.info("Selected active activity: %s", active)
-            return active
+            logger.info("Selected active activity %s", activity["sActName"])
+            return activity["sActId"]
     raise NoActiveActivityError("No active check-in activity is available.")
 
 
@@ -224,15 +209,10 @@ def check_in(student_id: str, image_path: str = DEFAULT_IMAGE_PATH) -> str:
     Returns:
         The raw response returned by the check-in service.
     """
-    activity = _get_active_activity(student_id)
-    response = ""
-    if activity.collects_gps:
-        response = _submit_gps(student_id, activity.activity_id)
-    else:
-        logger.info("Activity does not collect GPS; skipping position submission")
-    if activity.requires_face:
-        response = _submit_face(student_id, activity.activity_id, image_path)
-    else:
-        logger.info("Activity does not require a face; skipping face submission")
-    logger.info("Check-in completed for activity %s", activity.activity_id)
+    activity_id = _get_active_activity(student_id)
+    # Optional: enable this to also submit the hardcoded campus position.
+    # _submit_gps(student_id, activity_id)
+    # The face submission completes the check-in, even when isNeedFace is 0.
+    response = _submit_face(student_id, activity_id, image_path)
+    logger.info("Check-in completed for activity %s", activity_id)
     return response

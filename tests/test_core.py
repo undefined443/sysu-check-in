@@ -7,54 +7,22 @@ import pytest
 from sysu_check_in import core
 
 
-@pytest.mark.parametrize(
-    (
-        "collects_gps",
-        "requires_face",
-        "expected_collects_gps",
-        "expected_requires_face",
-    ),
-    [
-        (0, 0, False, False),
-        (0, 1, False, True),
-        (1, 0, True, False),
-        (1, 1, True, True),
-    ],
-)
 def test_get_active_activity_returns_first_active_activity(
     monkeypatch: pytest.MonkeyPatch,
-    collects_gps: int,
-    requires_face: int,
-    expected_collects_gps: bool,
-    expected_requires_face: bool,
 ) -> None:
-    """Return the first active activity and its submission settings."""
+    """Return the ID of the first activity that is open for check-in."""
     response = Mock()
     response.json.return_value = {
         "data": {
             "rows": [
-                {
-                    "iSignStatus": 1,
-                    "sActId": "upcoming-activity",
-                    "iCollectGPS": 0,
-                    "isNeedFace": 0,
-                },
-                {
-                    "iSignStatus": 2,
-                    "sActId": "activity-1",
-                    "iCollectGPS": collects_gps,
-                    "isNeedFace": requires_face,
-                },
+                {"iSignStatus": 3, "sActId": "signed-activity", "sActName": "Signed"},
+                {"iSignStatus": 2, "sActId": "activity-1", "sActName": "Holiday"},
             ]
         }
     }
     monkeypatch.setattr(core, "_post", lambda *_: response)
 
-    assert core._get_active_activity("student-1") == core._Activity(
-        activity_id="activity-1",
-        collects_gps=expected_collects_gps,
-        requires_face=expected_requires_face,
-    )
+    assert core._get_active_activity("student-1") == "activity-1"
 
 
 def test_get_active_activity_raises_when_no_activity(
@@ -69,80 +37,19 @@ def test_get_active_activity_raises_when_no_activity(
         core._get_active_activity("student-1")
 
 
-def test_check_in_submits_required_data_for_active_activity(
+def test_check_in_submits_face_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Submit position and face data for the resolved activity."""
-    submissions: list[str] = []
-
-    def _submit_gps(*_: str) -> str:
-        submissions.append("gps")
-        return "position-submitted"
-
-    def _submit_face(*_: str) -> str:
-        submissions.append("face")
-        return "submitted"
-
-    monkeypatch.setattr(
-        core,
-        "_get_active_activity",
-        lambda _: core._Activity(
-            activity_id="activity-1",
-            collects_gps=True,
-            requires_face=True,
-        ),
-    )
-    monkeypatch.setattr(
-        core,
-        "_submit_gps",
-        _submit_gps,
-    )
-    monkeypatch.setattr(core, "_submit_face", _submit_face)
-
-    assert core.check_in("student-1", "face.jpg") == "submitted"
-    assert submissions == ["gps", "face"]
-
-
-def test_check_in_skips_gps_when_activity_does_not_collect_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Skip position submission when the activity does not collect GPS data."""
-    monkeypatch.setattr(
-        core,
-        "_get_active_activity",
-        lambda _: core._Activity(
-            activity_id="activity-1",
-            collects_gps=False,
-            requires_face=True,
-        ),
-    )
+    """Submit only the face image, even when the activity does not require it."""
+    monkeypatch.setattr(core, "_get_active_activity", lambda _: "activity-1")
     submit_gps = Mock()
     monkeypatch.setattr(core, "_submit_gps", submit_gps)
-    monkeypatch.setattr(core, "_submit_face", lambda *_: "submitted")
-
-    assert core.check_in("student-1") == "submitted"
-    submit_gps.assert_not_called()
-
-
-def test_check_in_skips_face_when_activity_does_not_require_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Skip face submission when the activity does not require it."""
-    monkeypatch.setattr(
-        core,
-        "_get_active_activity",
-        lambda _: core._Activity(
-            activity_id="activity-1",
-            collects_gps=True,
-            requires_face=False,
-        ),
-    )
-    monkeypatch.setattr(core, "_submit_gps", lambda *_: "position-submitted")
-    submit_face = Mock()
+    submit_face = Mock(return_value="submitted")
     monkeypatch.setattr(core, "_submit_face", submit_face)
 
-    assert core.check_in("student-1") == "position-submitted"
-    submit_face.assert_not_called()
+    assert core.check_in("student-1", "face.jpg") == "submitted"
+    submit_face.assert_called_once_with("student-1", "activity-1", "face.jpg")
+    submit_gps.assert_not_called()
 
 
 def test_submit_face_encodes_image_and_builds_request(
@@ -193,24 +100,3 @@ def test_submit_gps_raises_when_service_rejects_submission(
 
     with pytest.raises(core.CheckInRejectedError, match="Location verification failed"):
         core._submit_gps("student-1", "activity-1")
-
-
-def test_check_in_logs_skipped_submissions(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Log which submissions are skipped for the active activity."""
-    monkeypatch.setattr(
-        core,
-        "_get_active_activity",
-        lambda _: core._Activity(
-            activity_id="activity-1",
-            collects_gps=False,
-            requires_face=False,
-        ),
-    )
-
-    with caplog.at_level("INFO", logger=core.__name__):
-        core.check_in("student-1")
-
-    assert "skipping position submission" in caplog.text
-    assert "skipping face submission" in caplog.text
