@@ -108,7 +108,7 @@ def _post(endpoint_path: str, form_data: dict[str, str]) -> requests.Response:
     url = f"{_BASE_URL}/{endpoint_path}"
     logger.debug("POST %s with fields %s", url, sorted(form_data))
     started = time.monotonic()
-    response = requests.post(url, data=form_data, headers=_HEADERS, timeout=15)
+    response = requests.post(url, data=form_data, headers=_HEADERS, timeout=30)
     logger.debug(
         "POST %s returned HTTP %d in %.2fs: %s",
         url,
