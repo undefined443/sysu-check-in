@@ -2,6 +2,7 @@
 
 from sysu_check_in.core import (
     DEFAULT_IMAGE_PATH,
+    AlreadyCheckedInError,
     CheckInRejectedError,
     NoActiveActivityError,
     check_in,
@@ -9,6 +10,7 @@ from sysu_check_in.core import (
 
 __all__ = [
     "DEFAULT_IMAGE_PATH",
+    "AlreadyCheckedInError",
     "CheckInRejectedError",
     "NoActiveActivityError",
     "check_in",

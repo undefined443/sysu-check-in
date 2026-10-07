@@ -78,6 +78,8 @@ def main() -> None:
     _configure_logging(args.verbose)
     try:
         print(core.check_in(args.student_id, args.image))
+    except core.AlreadyCheckedInError as error:
+        print(error)
     except (
         FileNotFoundError,
         core.CheckInRejectedError,

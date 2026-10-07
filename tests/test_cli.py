@@ -70,6 +70,22 @@ def test_main_reports_no_active_activity(
     assert "Check-in failed: No active check-in activity" in capsys.readouterr().err
 
 
+def test_main_reports_already_checked_in(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Print an already signed activity and exit successfully."""
+    monkeypatch.setattr(sys, "argv", ["sysu-check-in", "student-1"])
+
+    def _raise_already_checked_in(*_: str) -> str:
+        raise core.AlreadyCheckedInError("Already checked in to Holiday.")
+
+    monkeypatch.setattr(core, "check_in", _raise_already_checked_in)
+
+    cli.main()
+
+    assert capsys.readouterr().out == "Already checked in to Holiday.\n"
+
+
 def test_main_reports_rejected_check_in(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

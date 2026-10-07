@@ -48,6 +48,10 @@ class CheckInRejectedError(Exception):
     """Raised when the service rejects a check-in submission."""
 
 
+class AlreadyCheckedInError(Exception):
+    """Raised when the student has already checked in to the activity."""
+
+
 def _timestamp() -> int:
     """Return the current Unix timestamp in seconds."""
     return int(time.time())
@@ -164,7 +168,8 @@ def _get_active_activity(student_id: str) -> str:
         The active check-in activity ID.
 
     Raises:
-        NoActiveActivityError: If no activity is open.
+        AlreadyCheckedInError: If no activity is open but one is already signed.
+        NoActiveActivityError: If no activity is open or signed.
     """
     logger.info("Fetching activity list")
     activities = _fetch_activities(student_id)
@@ -172,6 +177,11 @@ def _get_active_activity(student_id: str) -> str:
         if activity["iSignStatus"] == _ACTIVE_SIGN_STATUS:
             logger.info("Selected active activity %s", activity["sActName"])
             return activity["sActId"]
+    for activity in activities:
+        if activity["iSignStatus"] == _SIGNED_STATUS:
+            raise AlreadyCheckedInError(
+                f"Already checked in to {activity['sActName']}."
+            )
     raise NoActiveActivityError("No active check-in activity is available.")
 
 

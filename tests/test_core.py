@@ -37,6 +37,26 @@ def test_get_active_activity_raises_when_no_activity(
         core._get_active_activity("student-1")
 
 
+def test_get_active_activity_raises_when_already_signed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report an already signed activity when no activity is open."""
+    response = Mock()
+    response.json.return_value = {
+        "data": {
+            "rows": [
+                {"iSignStatus": 3, "sActId": "activity-1", "sActName": "Holiday"},
+            ]
+        }
+    }
+    monkeypatch.setattr(core, "_post", lambda *_: response)
+
+    with pytest.raises(
+        core.AlreadyCheckedInError, match="Already checked in to Holiday"
+    ):
+        core._get_active_activity("student-1")
+
+
 @pytest.mark.parametrize(
     ("sign_status", "sign_status_text", "is_signed"),
     [(3, "已报到", True), (2, "去报到", False)],
