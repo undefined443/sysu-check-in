@@ -24,7 +24,7 @@ Add `-v` to log progress to stderr, or `-vv` for debug details such as request p
 uvx sysu-check-in <student-id> -vv
 ```
 
-The command prints the raw response from the last required submission. It exits with a non-zero status and an error message if the image is missing, the request fails, an activity is unavailable, or the service rejects a submission.
+The command submits the face image, confirms that the service has recorded the check-in, and prints the raw submission response.
 
 ## Development
 

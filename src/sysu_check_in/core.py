@@ -15,6 +15,7 @@ _AES_KEY = bytes.fromhex("73683132333435363738393031323334")
 
 _BASE_URL = "https://facerecog.sysu.edu.cn/sign"
 _ACTIVE_SIGN_STATUS = 2
+_SIGNED_STATUS = 3
 
 DEFAULT_IMAGE_PATH = "face.jpg"
 
@@ -125,6 +126,34 @@ def _raise_for_rejection(response: requests.Response) -> None:
         raise CheckInRejectedError(payload["msg"])
 
 
+def _fetch_activities(student_id: str) -> list[dict]:
+    """Fetch the check-in activities visible to a student.
+
+    Args:
+        student_id: Student ID used for check-in.
+
+    Returns:
+        Raw activity rows returned by the service.
+    """
+    plaintext = f"{student_id}##{_timestamp()}"
+    logger.debug("Activity list payload: %s", plaintext)
+    response = _post("getActivityList", {"sKey": _encrypt(plaintext)})
+    activities = response.json()["data"]["rows"]
+    logger.info("Service returned %d activities", len(activities))
+    for activity in activities:
+        logger.debug(
+            "Activity %s (%s): iSignStatus=%s sSignStatus=%s iCollectGPS=%s "
+            "isNeedFace=%s",
+            activity.get("sActId"),
+            activity.get("sActName"),
+            activity.get("iSignStatus"),
+            activity.get("sSignStatus"),
+            activity.get("iCollectGPS"),
+            activity.get("isNeedFace"),
+        )
+    return activities
+
+
 def _get_active_activity(student_id: str) -> str:
     """Fetch the ID of the currently active check-in activity.
 
@@ -133,25 +162,36 @@ def _get_active_activity(student_id: str) -> str:
 
     Returns:
         The active check-in activity ID.
+
+    Raises:
+        NoActiveActivityError: If no activity is open.
     """
     logger.info("Fetching activity list")
-    plaintext = f"{student_id}##{_timestamp()}"
-    logger.debug("Activity list payload: %s", plaintext)
-    response = _post("getActivityList", {"sKey": _encrypt(plaintext)})
-    activities = response.json()["data"]["rows"]
-    logger.info("Service returned %d activities", len(activities))
+    activities = _fetch_activities(student_id)
     for activity in activities:
-        logger.debug(
-            "Activity %s: iSignStatus=%s iCollectGPS=%s isNeedFace=%s",
-            activity.get("sActId"),
-            activity.get("iSignStatus"),
-            activity.get("iCollectGPS"),
-            activity.get("isNeedFace"),
-        )
         if activity["iSignStatus"] == _ACTIVE_SIGN_STATUS:
             logger.info("Selected active activity %s", activity["sActName"])
             return activity["sActId"]
     raise NoActiveActivityError("No active check-in activity is available.")
+
+
+def _verify_signed(student_id: str, activity_id: str) -> None:
+    """Confirm that the service has recorded the check-in for an activity.
+
+    Args:
+        student_id: Student ID used for check-in.
+        activity_id: ID of the activity that was just submitted.
+
+    Raises:
+        CheckInRejectedError: If the activity is not marked as signed.
+    """
+    logger.info("Verifying check-in status for activity %s", activity_id)
+    activities = {row["sActId"]: row for row in _fetch_activities(student_id)}
+    activity = activities[activity_id]
+    if activity["iSignStatus"] != _SIGNED_STATUS:
+        raise CheckInRejectedError(
+            f"Check-in not recorded: status is {activity['sSignStatus']}."
+        )
 
 
 def _submit_gps(student_id: str, activity_id: str) -> str:
@@ -214,5 +254,7 @@ def check_in(student_id: str, image_path: str = DEFAULT_IMAGE_PATH) -> str:
     # _submit_gps(student_id, activity_id)
     # The face submission completes the check-in, even when isNeedFace is 0.
     response = _submit_face(student_id, activity_id, image_path)
+    # The submission response may report success without recording the check-in.
+    _verify_signed(student_id, activity_id)
     logger.info("Check-in completed for activity %s", activity_id)
     return response

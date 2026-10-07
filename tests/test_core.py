@@ -37,19 +37,55 @@ def test_get_active_activity_raises_when_no_activity(
         core._get_active_activity("student-1")
 
 
-def test_check_in_submits_face_only(
+@pytest.mark.parametrize(
+    ("sign_status", "sign_status_text", "is_signed"),
+    [(3, "已报到", True), (2, "去报到", False)],
+)
+def test_verify_signed_checks_activity_status(
+    monkeypatch: pytest.MonkeyPatch,
+    sign_status: int,
+    sign_status_text: str,
+    is_signed: bool,
+) -> None:
+    """Accept a signed activity and reject one that is still open."""
+    response = Mock()
+    response.json.return_value = {
+        "data": {
+            "rows": [
+                {"iSignStatus": 2, "sActId": "other-activity", "sSignStatus": "去报到"},
+                {
+                    "iSignStatus": sign_status,
+                    "sActId": "activity-1",
+                    "sSignStatus": sign_status_text,
+                },
+            ]
+        }
+    }
+    monkeypatch.setattr(core, "_post", lambda *_: response)
+
+    if is_signed:
+        core._verify_signed("student-1", "activity-1")
+    else:
+        with pytest.raises(core.CheckInRejectedError, match="status is 去报到"):
+            core._verify_signed("student-1", "activity-1")
+
+
+def test_check_in_submits_face_and_verifies_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Submit only the face image, even when the activity does not require it."""
+    """Submit only the face image, then confirm the check-in was recorded."""
     monkeypatch.setattr(core, "_get_active_activity", lambda _: "activity-1")
     submit_gps = Mock()
     monkeypatch.setattr(core, "_submit_gps", submit_gps)
     submit_face = Mock(return_value="submitted")
     monkeypatch.setattr(core, "_submit_face", submit_face)
+    verify_signed = Mock()
+    monkeypatch.setattr(core, "_verify_signed", verify_signed)
 
     assert core.check_in("student-1", "face.jpg") == "submitted"
     submit_face.assert_called_once_with("student-1", "activity-1", "face.jpg")
     submit_gps.assert_not_called()
+    verify_signed.assert_called_once_with("student-1", "activity-1")
 
 
 def test_submit_face_encodes_image_and_builds_request(
